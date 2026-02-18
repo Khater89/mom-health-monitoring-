@@ -12,6 +12,8 @@
         body {
             font-family: 'Cairo', sans-serif;
             background-color: #f8fafc;
+            margin: 0;
+            padding: 0;
         }
         .font-serif {
             font-family: 'Cairo', sans-serif;
@@ -21,6 +23,10 @@
             background: rgba(255, 255, 255, 0.8);
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        /* منع التمرير الأفقي المزعج */
+        #root {
+            overflow-x: hidden;
         }
     </style>
     <script type="importmap">
@@ -38,5 +44,7 @@
 </head>
 <body>
     <div id="root"></div>
+    <!-- إضافة الملف الأساسي لتشغيل التطبيق -->
+    <script type="module" src="index.tsx"></script>
 </body>
 </html>

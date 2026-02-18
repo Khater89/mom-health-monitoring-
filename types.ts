@@ -65,6 +65,8 @@ export interface MedicalRecord {
   date: string; 
   time?: string;
   place: string;
+  doctorSpecialty?: string; // تخصص الطبيب
+  doctorPhone?: string;     // رقم الطبيب
   expectedCost: number;
   actualCost?: number; 
   currency: string;

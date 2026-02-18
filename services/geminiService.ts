@@ -6,23 +6,22 @@ import { UserProfile, AnalysisResult, MealPlan, MedicalRecordKind } from "../typ
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 /**
- * محرك الفرز الذكي: يحلل أي ملف ويحدد نوعه ومحتواه لبناء المسار الطبي
+ * محرك الفرز والتحليل المعمق: يستخدم Gemini 3 Pro لتحليل الصور والمستندات بدقة عالية
  */
 export const autoSortMedicalFile = async (base64Data: string, mimeType: string) => {
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-3-pro-preview',
     contents: {
       parts: [
         { inlineData: { data: base64Data, mimeType } },
-        { text: `أنت محرك فرز طبي ذكي. حلل هذا الملف وقم بالآتي:
-        1. حدد نوع الملف (category): هل هو 'visits' (زيارة طبيب)، 'labs' (تقرير مختبر)، 'meds' (وصفة أو قائمة أدوية)، 'hospital' (خروجية مستشفى)، أو 'costs' (فاتورة).
-        2. استخرج العنوان (title) والتاريخ (date) والمكان (place).
-        3. استخرج التكلفة إن وجدت (actualCost).
-        4. استخرج ملخصاً طبياً (summary) وتوصية (advice).
-        5. إذا وجد أدوية، استخرجها بالتفصيل (nameAr, dosage, purpose).
+        { text: `أنت خبير مختبرات طبي رفيع المستوى. حلل هذه الصورة/الملف الطبي بعناية فائقة:
+        1. استخرج كافة النتائج المخبرية بدقة (الاسم، القيمة، الوحدة، المجال الطبيعي).
+        2. قدم شرحاً علمياً مبسطاً لكل نتيجة خارج النطاق الطبيعي.
+        3. صنف الملف ضمن الفئات التالية: visits, labs, meds, hospital, costs.
+        4. استخرج التواريخ، التخصصات، والمبالغ المالية المذكورة.
         
-        يجب أن تكون الإجابة بصيغة JSON حصراً.` }
+        يجب أن تكون الإجابة بصيغة JSON حصراً وتفصيلية جداً في خانة recommendations.` }
       ]
     },
     config: {
@@ -30,13 +29,13 @@ export const autoSortMedicalFile = async (base64Data: string, mimeType: string) 
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          category: { type: Type.STRING, description: "One of: visits, labs, meds, hospital, costs" },
+          category: { type: Type.STRING },
           title: { type: Type.STRING },
           date: { type: Type.STRING },
           place: { type: Type.STRING },
           actualCost: { type: Type.NUMBER },
           summary: { type: Type.STRING },
-          advice: { type: Type.STRING },
+          recommendations: { type: Type.STRING, description: "Detailed medical analysis of lab results" },
           medications: {
             type: Type.ARRAY,
             items: {
@@ -49,11 +48,26 @@ export const autoSortMedicalFile = async (base64Data: string, mimeType: string) 
             }
           }
         },
-        required: ["category", "title", "summary"]
+        required: ["category", "title", "recommendations"]
       }
     }
   });
   return JSON.parse(response.text || '{}');
+};
+
+/**
+ * وضع التفكير العميق (Thinking Mode): يستخدم للمسائل الطبية المعقدة وتداخلات الأدوية
+ */
+export const getDeepAnalysis = async (query: string, context?: string) => {
+  const ai = getAI();
+  const response = await ai.models.generateContent({
+    model: "gemini-3-pro-preview",
+    contents: `سؤال معقد حول حالة الوالدة الصحية: ${query} \n السياق الإضافي: ${context || ''}`,
+    config: {
+      thinkingConfig: { thinkingBudget: 32768 }
+    },
+  });
+  return response.text;
 };
 
 export const analyzeMedicalText = async (textContent: string) => {
@@ -78,11 +92,8 @@ export const analyzeMedicalText = async (textContent: string) => {
               properties: {
                 nameAr: { type: Type.STRING },
                 nameEn: { type: Type.STRING },
-                scientificName: { type: Type.STRING },
                 dosage: { type: Type.STRING },
-                time: { type: Type.STRING },
-                purpose: { type: Type.STRING },
-                categoryAr: { type: Type.STRING }
+                purpose: { type: Type.STRING }
               }
             }
           },
@@ -97,11 +108,11 @@ export const analyzeMedicalText = async (textContent: string) => {
 export const analyzeMedicalDocument = async (base64Data: string, mimeType: string) => {
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-3-pro-preview',
     contents: {
       parts: [
         { inlineData: { data: base64Data, mimeType } },
-        { text: "حلل هذه الوثيقة الطبية واستخرج المعلومات الأساسية والأدوية." }
+        { text: "حلل هذه الوثيقة الطبية باستخدام قدراتك البصرية المتقدمة واستخرج المعلومات الأساسية." }
       ]
     },
     config: {
@@ -132,7 +143,7 @@ export const analyzeMedicalDocument = async (base64Data: string, mimeType: strin
 export const getAdvancedAdvice = async (profile: UserProfile, doctorOpinion: string, attachments: { data: string, mimeType: string }[] = []) => {
   const ai = getAI();
   const parts: any[] = [
-    { text: `بناءً على تاريخ الوالدة الطبي المحفوظ في المجلد والبيانات الحالية: "${doctorOpinion}". هل هذا الرأي الطبي يتوافق مع حالتها السابقة؟ حلل التداخلات الدوائية المحتملة.` }
+    { text: `بناءً على تاريخ الوالدة الطبي والبيان الحالي: "${doctorOpinion}". قدم تحليلاً طبياً مع استخدام البحث في جوجل.` }
   ];
 
   attachments.forEach(att => {
@@ -140,9 +151,12 @@ export const getAdvancedAdvice = async (profile: UserProfile, doctorOpinion: str
   });
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-3-pro-preview',
     contents: { parts },
-    config: { tools: [{ googleSearch: {} }] },
+    config: { 
+      tools: [{ googleSearch: {} }],
+      thinkingConfig: { thinkingBudget: 16000 }
+    },
   });
 
   const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => ({
@@ -156,8 +170,11 @@ export const getAdvancedAdvice = async (profile: UserProfile, doctorOpinion: str
 export const startChat = () => {
   const ai = getAI();
   return ai.chats.create({
-    model: 'gemini-3-flash-preview',
-    config: { systemInstruction: SYSTEM_INSTRUCTION },
+    model: 'gemini-3-pro-preview',
+    config: { 
+      systemInstruction: SYSTEM_INSTRUCTION,
+      thinkingConfig: { thinkingBudget: 0 } // تعطيل التفكير في الشات المباشر لسرعة الاستجابة
+    },
   });
 };
 
