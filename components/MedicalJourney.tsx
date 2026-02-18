@@ -12,6 +12,8 @@ const MedicalJourney: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<MedicalRecordKind>('visits');
   const [selectedRecord, setSelectedRecord] = useState<MedicalRecord | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // نموذج إدخال الزيارات المحدث ليشمل التاريخ والتخصص ورقم الدكتور
   const [visitForm, setVisitForm] = useState({
@@ -43,6 +45,66 @@ const MedicalJourney: React.FC = () => {
     });
     return summary;
   }, [records]);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsScanning(true);
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      try {
+        const base64 = (reader.result as string).split(',')[1];
+        const mimeType = file.type || 'image/jpeg';
+        
+        // استخدام Gemini 3 Pro للتحليل العميق
+        const analysis = await autoSortMedicalFile(base64, mimeType);
+        
+        const newRecord: MedicalRecord = {
+          id: Math.random().toString(36).substr(2, 9),
+          kind: (analysis.category as MedicalRecordKind) || activeTab,
+          title: analysis.title || `تحليل آلي: ${file.name}`,
+          date: analysis.date || new Date().toISOString().slice(0, 10),
+          place: analysis.place || 'تم التعرف آلياً',
+          doctorSpecialty: analysis.specialty || '',
+          doctorPhone: analysis.phone || '',
+          expectedCost: analysis.actualCost || 0,
+          actualCost: analysis.actualCost || 0,
+          currency: 'JOD',
+          recommendations: analysis.recommendations || analysis.summary,
+          afterReviewNotes: analysis.summary || '',
+          attachments: [{
+            id: Math.random().toString(36).substr(2, 9),
+            name: file.name,
+            mime: mimeType,
+            addedAt: Date.now(),
+            base64: reader.result as string
+          }],
+          completed: true,
+          payments: [{
+            id: Math.random().toString(36).substr(2, 9),
+            payer: PAYERS[0],
+            kind: 'آلي',
+            amount: analysis.actualCost || 0,
+            currency: 'JOD',
+            date: analysis.date || new Date().toISOString().slice(0, 10)
+          }],
+          source: 'manual',
+          isAiAnalyzed: true
+        };
+
+        setRecords([newRecord, ...records]);
+        alert("تم تحليل التقرير وإضافته للمسار بنجاح ✨");
+      } catch (err) {
+        console.error(err);
+        alert("عذراً، فشل التحليل الذكي. يرجى التأكد من وضوح الصورة.");
+      } finally {
+        setIsScanning(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleAddVisit = () => {
     const newRecord: MedicalRecord = {
@@ -78,7 +140,6 @@ const MedicalJourney: React.FC = () => {
     const updatedRecords = records.map(r => {
       if (r.id === recordId) {
         const newRecord = { ...r, ...updates };
-        // إذا تغيرت التكلفة أو الدافع، نحدث كائن الدفع أيضاً
         if (updates.actualCost !== undefined || (updates.payments && updates.payments[0]?.payer)) {
            const currentPayer = updates.payments?.[0]?.payer || r.payments?.[0]?.payer || 'أمي';
            const currentAmount = updates.actualCost ?? r.actualCost ?? 0;
@@ -126,85 +187,69 @@ const MedicalJourney: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Main Content Area */}
         <div className="lg:col-span-8 space-y-6">
           
-          {/* نموذج تسجيل زيارة الطبيب المحدث */}
-          {activeTab === 'visits' && (
-            <div className="bg-white p-8 rounded-[3rem] shadow-xl border-t-8 border-blue-600 space-y-6 animate-slideUp">
-              <h3 className="text-xl font-black text-slate-800">تسجيل زيارة جديدة</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase mr-2">نوع الزيارة</label>
-                  <select 
-                    value={visitForm.type}
-                    onChange={e => setVisitForm({...visitForm, type: e.target.value})}
-                    className="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold"
-                  >
-                    <option>كشفية</option>
-                    <option>مراجعة</option>
-                  </select>
+          {/* نموذج التسجيل + زر المسح الذكي */}
+          {(activeTab === 'visits' || activeTab === 'labs') && (
+            <div className="bg-white p-8 rounded-[3rem] shadow-xl border-t-8 border-blue-600 space-y-6 animate-slideUp relative overflow-hidden">
+              {isScanning && (
+                <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center space-y-4">
+                  <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  <div className="text-xl font-black text-blue-600 animate-pulse">Gemini يحلل التقرير الآن...</div>
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase mr-2">تخصص الطبيب</label>
-                  <input 
-                    type="text"
-                    placeholder="مثال: دكتور عظام"
-                    value={visitForm.specialty}
-                    onChange={e => setVisitForm({...visitForm, specialty: e.target.value})}
-                    className="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase mr-2">رقم هاتف الطبيب</label>
-                  <input 
-                    type="tel"
-                    placeholder="07xxxxxxxx"
-                    value={visitForm.phone}
-                    onChange={e => setVisitForm({...visitForm, phone: e.target.value})}
-                    className="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold"
-                  />
-                </div>
+              )}
+              
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-black text-slate-800">إضافة سجل {activeTab === 'visits' ? 'زيارة' : 'مختبر'}</h3>
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-6 py-3 bg-blue-50 text-blue-600 rounded-2xl font-black flex items-center gap-3 hover:bg-blue-100 transition-all border border-blue-100 shadow-sm"
+                >
+                  <i className="fas fa-magic"></i>
+                  مسح ذكي للصورة/التقرير
+                </button>
+                <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept="image/*,application/pdf" />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase mr-2">تاريخ الزيارة</label>
-                  <input 
-                    type="date"
-                    value={visitForm.date}
-                    onChange={e => setVisitForm({...visitForm, date: e.target.value})}
-                    className="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase mr-2">التكلفة (JOD)</label>
-                  <input 
-                    type="number"
-                    value={visitForm.cost}
-                    onChange={e => setVisitForm({...visitForm, cost: Number(e.target.value)})}
-                    className="w-full p-4 bg-blue-50 text-blue-700 rounded-2xl border-none font-black"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase mr-2">الدافع</label>
-                  <select 
-                    value={visitForm.payer}
-                    onChange={e => setVisitForm({...visitForm, payer: e.target.value})}
-                    className="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold"
-                  >
-                    {PAYERS.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
-              </div>
-              
-              <textarea 
-                placeholder="رأي الطبيب بعد الزيارة (اختياري)..."
-                value={visitForm.doctorNote}
-                onChange={e => setVisitForm({...visitForm, doctorNote: e.target.value})}
-                className="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold h-24"
-              />
-              <button onClick={handleAddVisit} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg hover:bg-blue-700 transition-all">حفظ الزيارة في المسار</button>
+              {activeTab === 'visits' && (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase mr-2">نوع الزيارة</label>
+                      <select value={visitForm.type} onChange={e => setVisitForm({...visitForm, type: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold">
+                        <option>كشفية</option>
+                        <option>مراجعة</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase mr-2">تخصص الطبيب</label>
+                      <input type="text" placeholder="مثال: دكتور عظام" value={visitForm.specialty} onChange={e => setVisitForm({...visitForm, specialty: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase mr-2">رقم هاتف الطبيب</label>
+                      <input type="tel" placeholder="07xxxxxxxx" value={visitForm.phone} onChange={e => setVisitForm({...visitForm, phone: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase mr-2">تاريخ الزيارة</label>
+                      <input type="date" value={visitForm.date} onChange={e => setVisitForm({...visitForm, date: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase mr-2">التكلفة (JOD)</label>
+                      <input type="number" value={visitForm.cost} onChange={e => setVisitForm({...visitForm, cost: Number(e.target.value)})} className="w-full p-4 bg-blue-50 text-blue-700 rounded-2xl border-none font-black" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-slate-400 uppercase mr-2">الدافع</label>
+                      <select value={visitForm.payer} onChange={e => setVisitForm({...visitForm, payer: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold">
+                        {PAYERS.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <textarea placeholder="رأي الطبيب بعد الزيارة (اختياري)..." value={visitForm.doctorNote} onChange={e => setVisitForm({...visitForm, doctorNote: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl border-none font-bold h-24" />
+                  <button onClick={handleAddVisit} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg hover:bg-blue-700 transition-all">حفظ الزيارة يدوياً</button>
+                </>
+              )}
             </div>
           )}
 
@@ -244,14 +289,15 @@ const MedicalJourney: React.FC = () => {
                 <div 
                   key={record.id} 
                   onClick={() => setSelectedRecord(record)}
-                  className="bg-white rounded-[2.5rem] shadow-lg p-6 border border-slate-50 hover:shadow-2xl transition-all cursor-pointer flex justify-between items-center"
+                  className="bg-white rounded-[2.5rem] shadow-lg p-6 border border-slate-50 hover:shadow-2xl transition-all cursor-pointer flex justify-between items-center group"
                 >
                   <div className="flex items-center gap-4">
                     <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl shadow-inner ${record.kind === 'labs' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
+                      {record.isAiAnalyzed ? <i className="fas fa-sparkles text-sm absolute -mr-8 -mt-8 text-blue-400 animate-pulse"></i> : null}
                       <i className={`fas ${tabs.find(t => t.id === record.kind)?.icon}`}></i>
                     </div>
                     <div>
-                      <h4 className="font-black text-slate-800 text-lg">{record.title}</h4>
+                      <h4 className="font-black text-slate-800 text-lg group-hover:text-blue-600 transition-colors">{record.title}</h4>
                       <div className="flex gap-2">
                         <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">{record.date}</p>
                         {record.doctorSpecialty && <p className="text-[10px] font-black text-blue-500 uppercase">| {record.doctorSpecialty}</p>}
@@ -268,7 +314,6 @@ const MedicalJourney: React.FC = () => {
           )}
         </div>
 
-        {/* Sidebar */}
         <div className="lg:col-span-4">
           <div className="bg-slate-900 text-white p-8 rounded-[3rem] shadow-2xl space-y-6 sticky top-8">
             <h3 className="text-xl font-black">إجمالي المصاريف</h3>
@@ -285,13 +330,13 @@ const MedicalJourney: React.FC = () => {
         </div>
       </div>
 
-      {/* نافذة التفاصيل القابلة للتعديل (المختبرات والزيارات) */}
       {selectedRecord && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-3xl rounded-[3.5rem] p-10 shadow-2xl animate-slideUp overflow-y-auto max-h-[90vh] text-right">
             <div className="flex justify-between items-start mb-8">
                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center text-2xl shadow-inner">
+                  <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center text-2xl shadow-inner relative">
+                    {selectedRecord.isAiAnalyzed && <i className="fas fa-sparkles text-xs absolute top-2 right-2 text-blue-400 animate-pulse"></i>}
                     <i className="fas fa-file-medical"></i>
                   </div>
                   <div>
@@ -305,86 +350,61 @@ const MedicalJourney: React.FC = () => {
             </div>
 
             <div className="space-y-8">
-              {/* تعديل البيانات الأساسية (التاريخ، التخصص، الهاتف، التكلفة، الدافع) */}
+              {/* صورة التقرير المرفقة إن وجدت */}
+              {selectedRecord.attachments?.[0]?.base64 && (
+                <div className="rounded-[2.5rem] overflow-hidden border-4 border-slate-50 shadow-inner group relative">
+                  <img src={selectedRecord.attachments[0].base64} alt="Medical Report" className="w-full h-auto object-cover max-h-64 group-hover:scale-105 transition-transform cursor-zoom-in" onClick={() => window.open(selectedRecord.attachments![0].base64, '_blank')} />
+                  <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-4 py-2 rounded-full text-[10px] font-black text-slate-700 shadow-sm">صورة التقرير الأصلية</div>
+                </div>
+              )}
+
               <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase">تاريخ السجل</label>
-                    <input 
-                      type="date"
-                      value={selectedRecord.date}
-                      onChange={(e) => handleUpdateRecord(selectedRecord.id, { date: e.target.value })}
-                      className="w-full p-3 bg-white rounded-xl border-none font-bold text-sm"
-                    />
+                    <input type="date" value={selectedRecord.date} onChange={(e) => handleUpdateRecord(selectedRecord.id, { date: e.target.value })} className="w-full p-3 bg-white rounded-xl border-none font-bold text-sm" />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase">تخصص الطبيب</label>
-                    <input 
-                      type="text"
-                      value={selectedRecord.doctorSpecialty || ''}
-                      onChange={(e) => handleUpdateRecord(selectedRecord.id, { doctorSpecialty: e.target.value })}
-                      className="w-full p-3 bg-white rounded-xl border-none font-bold text-sm"
-                      placeholder="التخصص"
-                    />
+                    <input type="text" value={selectedRecord.doctorSpecialty || ''} onChange={(e) => handleUpdateRecord(selectedRecord.id, { doctorSpecialty: e.target.value })} className="w-full p-3 bg-white rounded-xl border-none font-bold text-sm" placeholder="التخصص" />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase">رقم الطبيب</label>
-                    <input 
-                      type="tel"
-                      value={selectedRecord.doctorPhone || ''}
-                      onChange={(e) => handleUpdateRecord(selectedRecord.id, { doctorPhone: e.target.value })}
-                      className="w-full p-3 bg-white rounded-xl border-none font-bold text-sm"
-                      placeholder="رقم الهاتف"
-                    />
+                    <input type="tel" value={selectedRecord.doctorPhone || ''} onChange={(e) => handleUpdateRecord(selectedRecord.id, { doctorPhone: e.target.value })} className="w-full p-3 bg-white rounded-xl border-none font-bold text-sm" placeholder="رقم الهاتف" />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase">التكلفة (JOD)</label>
-                    <input 
-                      type="number"
-                      value={selectedRecord.actualCost}
-                      onChange={(e) => handleUpdateRecord(selectedRecord.id, { actualCost: Number(e.target.value) })}
-                      className="w-full p-3 bg-white rounded-xl border-none font-bold text-sm text-blue-600"
-                    />
+                    <input type="number" value={selectedRecord.actualCost} onChange={(e) => handleUpdateRecord(selectedRecord.id, { actualCost: Number(e.target.value) })} className="w-full p-3 bg-white rounded-xl border-none font-bold text-sm text-blue-600" />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-black text-slate-400 uppercase">الدافع</label>
-                    <select 
-                      value={selectedRecord.payments?.[0]?.payer || 'أمي'}
-                      onChange={(e) => handleUpdateRecord(selectedRecord.id, { payments: [{ ...selectedRecord.payments[0], payer: e.target.value }] })}
-                      className="w-full p-3 bg-white rounded-xl border-none font-bold text-sm"
-                    >
+                    <select value={selectedRecord.payments?.[0]?.payer || 'أمي'} onChange={(e) => handleUpdateRecord(selectedRecord.id, { payments: [{ ...selectedRecord.payments[0], payer: e.target.value }] })} className="w-full p-3 bg-white rounded-xl border-none font-bold text-sm">
                       {PAYERS.map(p => <option key={p} value={p}>{p}</option>)}
                     </select>
                   </div>
                 </div>
               </div>
 
-              {/* تحليل المختبرات المعمق */}
-              {selectedRecord.kind === 'labs' && selectedRecord.recommendations && (
-                <div className="p-8 bg-emerald-50 rounded-[2.5rem] border border-emerald-100 space-y-4">
-                  <h4 className="text-emerald-800 font-black flex items-center gap-2">
-                    <i className="fas fa-microscope"></i> التحليل الذكي للنتائج
+              {selectedRecord.recommendations && (
+                <div className={`p-8 rounded-[2.5rem] border space-y-4 ${selectedRecord.kind === 'labs' ? 'bg-emerald-50 border-emerald-100' : 'bg-blue-50 border-blue-100'}`}>
+                  <h4 className={`${selectedRecord.kind === 'labs' ? 'text-emerald-800' : 'text-blue-800'} font-black flex items-center gap-2`}>
+                    <i className={`fas ${selectedRecord.kind === 'labs' ? 'fa-microscope' : 'fa-sparkles'}`}></i> 
+                    {selectedRecord.isAiAnalyzed ? 'التحليل الذكي لـ Gemini' : 'التوصيات الطبية'}
                   </h4>
-                  <div className="text-emerald-900 font-bold text-sm leading-relaxed whitespace-pre-wrap">
+                  <div className={`${selectedRecord.kind === 'labs' ? 'text-emerald-900' : 'text-blue-900'} font-bold text-sm leading-relaxed whitespace-pre-wrap`}>
                     {selectedRecord.recommendations}
                   </div>
                 </div>
               )}
 
-              {/* رأي الطبيب / ملاحظات */}
               <div className="space-y-4">
                 <h4 className="text-slate-800 font-black flex items-center gap-2">
                   <i className="fas fa-comment-medical text-blue-600"></i> رأي الطبيب والملاحظات العائلية
                 </h4>
-                <textarea 
-                  className="w-full p-6 bg-slate-50 rounded-[2rem] border-none font-bold text-slate-700 min-h-[150px] focus:ring-2 focus:ring-blue-600"
-                  placeholder="اكتب هنا ما قاله الطبيب أو أي تحديثات عن الحالة..."
-                  value={selectedRecord.afterReviewNotes || ''}
-                  onChange={(e) => handleUpdateRecord(selectedRecord.id, { afterReviewNotes: e.target.value })}
-                />
+                <textarea className="w-full p-6 bg-slate-50 rounded-[2rem] border-none font-bold text-slate-700 min-h-[150px] focus:ring-2 focus:ring-blue-600" placeholder="اكتب هنا ما قاله الطبيب أو أي تحديثات عن الحالة..." value={selectedRecord.afterReviewNotes || ''} onChange={(e) => handleUpdateRecord(selectedRecord.id, { afterReviewNotes: e.target.value })} />
               </div>
             </div>
           </div>
