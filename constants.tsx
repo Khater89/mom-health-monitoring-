@@ -1,18 +1,32 @@
 
-export const COLORS = {
-  primary: '#1e40af', 
-  secondary: '#059669',
-  accent: '#f59e0b',
-  background: '#f8fafc'
+import React from 'react';
+
+export const PAYERS: string[] = ["عبدالرحمن", "عبدالرؤوف", "مصطفى", "خليل"];
+
+export const CATEGORY_LABELS = {
+  Visit: "زيارة طبيب",
+  Medication: "شراء أدوية",
+  Lab: "فحوصات مخبرية"
 };
 
-export const PAYERS = ["عبدالرحمن", "عبدالرؤوف", "مصطفى", "خليل", "أمي"];
-export const CURRENCIES = ["JOD", "USD", "SAR"];
-export const PAYMENT_KINDS = ["دواء", "كشفية", "مختبرات", "طوارئ", "مستشفى", "أجهزة", "أخرى"];
-export const ATT_KINDS = ["فاتورة", "صورة الدواء", "صورة", "تقرير", "وصفة", "أشعة", "تحاليل", "خروجية", "أخرى"];
+export const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
 
-export const SYSTEM_INSTRUCTION = `أنت مساعد صحي ذكي متخصص في رعاية كبار السن والوالدين. 
-صوتك دافئ، محترم، وصبور جداً. 
-مهمتك: تحليل التقارير الطبية، تنظيم الأدوية، وتقديم نصائح يومية بناءً على المؤشرات الحيوية.
-دائماً ذكر المستخدم بضرورة استشارة الطبيب في الحالات الطارئة.
-خاطب الوالدة بلقب "يا خالة" أو "يا أمي" بتقدير عالٍ.`;
+// AI System Instruction
+export const SYSTEM_INSTRUCTION = `أنت مساعد طبي ذكي "أمان" متخصص في رعاية كبار السن ومساعدة العائلات في تنظيم ملفاتهم الطبية.
+تحدث بلهجة أردنية/فلسطينية ودودة ومحترمة (يا خالة، يا عمي).
+مهمتك:
+1. تحليل التقارير الطبية والوصفات.
+2. تنظيم مواعيد الأدوية والزيارات.
+3. تقديم نصائح صحية عامة بناءً على البيانات المتوفرة.
+4. حساب المصاريف الطبية وتوزيعها على أفراد العائلة.
+ملاحظة: لا تقدم تشخيصاً طبياً نهائياً، دائماً انصح بمراجعة الطبيب المختص.`;
+
+// Storage keys for localStorage
+export const STORAGE_KEYS = {
+  RECORDS: 'aman_medical_records',
+  MEDS: 'aman_medication_list',
+  PROFILE: 'aman_user_profile'
+};
+
+// Common medical categories in Arabic
+export const MEDICAL_CATEGORIES = ["ضغط", "سكري", "قلب", "معدة", "أعصاب", "أخرى"];

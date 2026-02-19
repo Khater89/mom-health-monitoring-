@@ -1,94 +1,63 @@
 
-export interface VitalSigns {
-  date: string;
-  bloodPressure: string;
-  sugarLevel: number;
-  heartRate: number;
-  hba1c?: number;
-  creatinine?: number;
-  hemoglobin?: number;
-}
-
-export interface Payment {
-  id: string;
-  payer: string;
-  kind: string;
-  amount: number;
-  currency: string;
-  date: string;
-}
+export type PayerName = "عبدالرحمن" | "عبدالرؤوف" | "مصطفى" | "خليل" | "الوالدة" | "آخر";
+export type MedicalRecordKind = 'visits' | 'labs' | 'er' | 'hospital' | 'costs' | 'meds';
 
 export interface Attachment {
   id: string;
   name: string;
   mime: string;
   addedAt: number;
-  base64?: string;
-  kind?: string;
-  driveFileId?: string; // معرف الملف في جوجل درايف
+  base64: string;
 }
 
 export interface Medication {
   id: string;
   nameAr: string;
-  nameEn: string;
-  scientificName?: string;
-  dosage: string;
-  time: string;
-  dosageSchedule?: string;
-  purpose: string;
+  dosage?: string;
+  purpose?: string;
   categoryAr?: string;
-  status: 'active' | 'stopped';
-  stopReason?: string;
-  price?: number;
-  paidBy?: string;
-  attachments: Attachment[];
-  payments: Payment[];
-  source: 'drive' | 'manual';
-}
-
-export type MedicalRecordKind = 'visits' | 'labs' | 'meds' | 'er' | 'hospital' | 'costs' | 'plan';
-
-export enum AppRoute {
-  DASHBOARD = 'DASHBOARD',
-  JOURNEY = 'JOURNEY',
-  ANALYSIS = 'ANALYSIS',
-  VOICE = 'VOICE',
-  MEDS = 'MEDS',
-  SETTINGS = 'SETTINGS',
+  time?: string;
+  status: 'active' | 'inactive';
+  paidBy: string;
+  price: number;
+  isRepeatable: boolean; 
+  analysisResult?: string;
 }
 
 export interface MedicalRecord {
   id: string;
   kind: MedicalRecordKind;
   title: string;
-  date: string; 
-  time?: string;
-  place: string;
-  doctorSpecialty?: string; // تخصص الطبيب
-  doctorPhone?: string;     // رقم الطبيب
+  date: string;
+  place?: string;
+  specialty?: string;
+  doctorName?: string;
+  visitType?: 'كشفية' | 'مراجعة';
   expectedCost: number;
-  actualCost?: number; 
-  currency: string;
-  afterReviewNotes?: string;
-  recommendations?: string;
+  actualCost: number;
+  preVisitNote?: string; // للحجز المسبق
+  postVisitNote?: string; // عند الإغلاق
+  recommendedBy?: string; // دكتور التوصية للمختبر
+  doctorRecommendations?: string; // ملاحظات الدكتور للمقارنة
+  afterReviewNotes?: string; // تحليل AI
+  paidBy: string;
   attachments: Attachment[];
-  completed: boolean; 
-  isAiAnalyzed?: boolean;
-  payments: Payment[];
-  source: 'drive' | 'manual';
+  completed: boolean; // تحديد حالة الاكتمال
 }
 
-export interface UserProfile {
-  name: string;
-  age?: number;
-  conditions?: string[];
-  dietaryRestrictions: string[];
-  stage?: string;
-  goals?: string[];
-  driveFolderId?: string;
+export enum AppRoute {
+  DASHBOARD = 'dashboard',
+  JOURNEY = 'journey',
+  ANALYSIS = 'analysis',
+  MEDS = 'meds',
+  SETTINGS = 'settings',
+  VOICE = 'voice',
+  AI_CHAT = 'ai_chat'
 }
 
+/**
+ * Added missing types for MealPlanner and other components
+ */
 export interface MealPlan {
   day: string;
   breakfast: string;
@@ -97,9 +66,28 @@ export interface MealPlan {
   snack: string;
 }
 
-export interface AnalysisResult {
-  summary: string;
-  medications: Partial<Medication>[];
-  advice: string;
-  category: MedicalRecordKind; // التصنيف التلقائي للملف
+export interface UserProfile {
+  name: string;
+  stage: string;
+  goals: string[];
+  dietaryRestrictions: string[];
+}
+
+export interface Payment {
+  id: string;
+  amount: number;
+  payer: string;
+  date: string;
+}
+
+export interface Visit {
+  id: string;
+  specialty: string;
+  doctor_name: string;
+  visit_date: string;
+  visit_type: string;
+  status: 'Scheduled' | 'Completed';
+  cost: number;
+  payer: PayerName;
+  pre_visit_note?: string;
 }

@@ -1,166 +1,119 @@
 
-import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { getAdvancedAdvice, getDeepAnalysis } from '../services/geminiService';
-import { UserProfile, MedicalRecord } from '../types';
-
-const MOCK_VITALS = [
-  { name: 'السبت', sugar: 140, hb: 10.5 },
-  { name: 'الأحد', sugar: 135, hb: 10.7 },
-  { name: 'الاثنين', sugar: 150, hb: 10.8 },
-  { name: 'الثلاثاء', sugar: 125, hb: 10.9 },
-  { name: 'الأربعاء', sugar: 130, hb: 11.0 },
-  { name: 'الجمعة', sugar: 110, hb: 10.9 },
-];
+import React, { useMemo } from 'react';
+import { STORAGE_KEYS, PAYERS } from '../constants';
+import { MedicalRecord, Medication } from '../types';
+import { 
+  Pill, Wallet, TrendingUp, Activity, User2, MessageCircle, AlertCircle
+} from 'lucide-react';
 
 const Dashboard: React.FC = () => {
-  const [doctorOpinion, setDoctorOpinion] = useState('');
-  const [adviceData, setAdviceData] = useState<{ text: string; sources: any[] } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [thinkingMode, setThinkingMode] = useState(false);
-  const [isDriveLinked, setIsDriveLinked] = useState(false);
-
-  useEffect(() => {
-    const profileStr = localStorage.getItem('aman_profile');
-    if (profileStr) {
-      const profile = JSON.parse(profileStr);
-      setIsDriveLinked(!!profile.driveFolderId);
-    }
+  const records: MedicalRecord[] = useMemo(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.RECORDS);
+    return saved ? JSON.parse(saved) : [];
   }, []);
 
-  const costStats = useMemo(() => {
-    const saved = localStorage.getItem('aman_medical_records');
-    if (!saved) return { expected: 0, actual: 0 };
-    const records: MedicalRecord[] = JSON.parse(saved);
-    return records.reduce((acc, curr) => ({
-      expected: acc.expected + (curr.expectedCost || 0),
-      actual: acc.actual + (curr.actualCost || 0)
-    }), { expected: 0, actual: 0 });
+  const meds: Medication[] = useMemo(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.MEDS);
+    return saved ? JSON.parse(saved) : [];
   }, []);
 
-  const handleGenerateAdvice = async () => {
-    if (!doctorOpinion.trim()) return alert("يرجى إدخال نص للمناقشة.");
-    setLoading(true);
-    try {
-      if (thinkingMode) {
-        const text = await getDeepAnalysis(doctorOpinion);
-        setAdviceData({ text, sources: [] });
-      } else {
-        const result = await getAdvancedAdvice({ name: 'دلال' } as UserProfile, doctorOpinion, []);
-        setAdviceData(result);
-      }
-    } catch (err) {
-      alert("حدث خطأ في الاتصال بالذكاء الاصطناعي.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const financialSummary = useMemo(() => {
+    let totalActual = 0;
+    let totalExpected = 0;
+    const perPayer: Record<string, number> = {};
+    [...PAYERS, "الوالدة", "آخر"].forEach(p => perPayer[p] = 0);
+
+    records.forEach(r => {
+      totalActual += Number(r.actualCost) || 0;
+      totalExpected += Number(r.expectedCost) || 0;
+      const p = r.paidBy || 'آخر';
+      perPayer[p] = (perPayer[p] || 0) + (Number(r.actualCost) || 0);
+    });
+
+    return { totalActual, totalExpected, perPayer };
+  }, [records]);
+
+  const stats = [
+    // Corrected icon from Pills to Pill
+    { label: 'أدوية نشطة', value: meds.filter(m => m.status === 'active').length.toString(), icon: <Pill />, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'المنفق فعلياً', value: `${financialSummary.totalActual.toFixed(1)} JOD`, icon: <Wallet />, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { label: 'الميزانية المتوقعة', value: `${financialSummary.totalExpected.toFixed(1)} JOD`, icon: <Activity />, color: 'text-rose-600', bg: 'bg-rose-50' },
+    { label: 'أكثر مساهم', value: (Object.entries(financialSummary.perPayer) as [string, number][]).sort((a, b) => b[1] - a[1])[0]?.[0] || 'لا يوجد', icon: <User2 />, color: 'text-amber-600', bg: 'bg-amber-50' },
+  ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8 animate-fadeIn pb-20 text-right">
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-50 flex items-center gap-4">
-          <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center"><i className="fas fa-wallet"></i></div>
-          <div>
-            <div className="text-[10px] text-slate-400 font-black">إجمالي المصاريف</div>
-            <div className="text-xl font-black text-slate-800">{costStats.actual.toFixed(1)} JOD</div>
+    <div className="max-w-6xl mx-auto space-y-8 animate-fadeIn text-right pb-24 px-2">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {stats.map((stat, i) => (
+          <div key={i} className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-50 flex flex-col items-center justify-center text-center">
+            <div className={`w-12 h-12 ${stat.bg} ${stat.color} rounded-2xl flex items-center justify-center mb-3 text-xl shadow-inner`}>
+              {stat.icon}
+            </div>
+            <div className="text-[9px] font-black text-slate-400 uppercase mb-1">{stat.label}</div>
+            <div className="text-sm font-black text-slate-800">{stat.value}</div>
           </div>
-        </div>
-        <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-50 flex items-center gap-4">
-          <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center"><i className="fas fa-heartbeat"></i></div>
-          <div>
-            <div className="text-[10px] text-slate-400 font-black">آخر قراءة سكر</div>
-            <div className="text-xl font-black text-slate-800">110 mg/dL</div>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-50 flex items-center gap-4">
-          <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center"><i className="fas fa-pills"></i></div>
-          <div>
-            <div className="text-[10px] text-slate-400 font-black">الأدوية النشطة</div>
-            <div className="text-xl font-black text-slate-800">8 أنواع</div>
-          </div>
-        </div>
-        <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-50 flex items-center gap-4">
-          <div className="w-12 h-12 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center"><i className="fas fa-calendar-alt"></i></div>
-          <div>
-            <div className="text-[10px] text-slate-400 font-black">الموعد القادم</div>
-            <div className="text-xl font-black text-slate-800">بعد 4 أيام</div>
-          </div>
-        </div>
+        ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-8">
-          <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-slate-50">
-            <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-3">
-              <i className="fas fa-chart-line text-blue-600"></i> مراقبة المؤشرات الصحية
-            </h3>
-            <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={MOCK_VITALS}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} className="text-[10px]" />
-                  <YAxis axisLine={false} tickLine={false} className="text-[10px]" />
-                  <Tooltip />
-                  <Area type="monotone" dataKey="sugar" stroke="#3b82f6" strokeWidth={4} fill="#3b82f610" name="السكر" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {adviceData && (
-            <div className="bg-white p-8 rounded-[3rem] shadow-xl border-r-[12px] border-blue-600 animate-slideUp">
-              <h4 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2">
-                <i className="fas fa-sparkles text-blue-600"></i> تحليل أمان الذكي
-              </h4>
-              <div className="prose prose-slate max-w-none text-slate-700 font-bold leading-relaxed whitespace-pre-wrap">
-                {adviceData.text}
-              </div>
-              {adviceData.sources.length > 0 && (
-                <div className="mt-6 pt-6 border-t border-slate-100 flex flex-wrap gap-3">
-                  {adviceData.sources.map((s, i) => (
-                    <a key={i} href={s.uri} target="_blank" rel="noopener noreferrer" className="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg text-[10px] font-black hover:bg-blue-100 transition-colors">
-                      <i className="fas fa-external-link-alt ml-1"></i> {s.title}
-                    </a>
-                  ))}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-slate-50">
+          <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-3 justify-end">
+             <span>حالة الميزانية الصحية</span>
+             <TrendingUp className="text-blue-600" />
+          </h3>
+          <div className="space-y-6">
+             <div className="relative pt-1">
+                <div className="flex mb-2 items-center justify-between">
+                  <div className="text-left"><span className="text-xs font-black text-blue-600">{((financialSummary.totalActual / (financialSummary.totalExpected || 1)) * 100).toFixed(0)}%</span></div>
+                  <div className="text-right"><span className="text-xs font-black text-slate-400">كفاءة الصرف</span></div>
                 </div>
-              )}
-            </div>
-          )}
+                <div className="overflow-hidden h-3 mb-4 flex rounded-full bg-slate-100">
+                  <div style={{ width: `${Math.min((financialSummary.totalActual / (financialSummary.totalExpected || 1)) * 100, 100)}%` }} className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-600 rounded-full transition-all duration-1000"></div>
+                </div>
+             </div>
+             <div className="flex gap-4 p-4 bg-blue-50/50 rounded-2xl border border-blue-100">
+                <AlertCircle className="text-blue-600 shrink-0" size={20} />
+                <p className="text-xs font-bold text-slate-600 leading-relaxed">
+                  تم صرف {financialSummary.totalActual.toFixed(1)} JOD من إجمالي ميزانية مخططة بقيمة {financialSummary.totalExpected.toFixed(1)} JOD. 
+                  {financialSummary.totalActual > financialSummary.totalExpected ? ' هناك زيادة طفيفة عن المتوقع هذا الشهر.' : ' الإدارة المالية تحت السيطرة تماماً.'}
+                </p>
+             </div>
+          </div>
         </div>
 
-        <div className="bg-white p-8 rounded-[3rem] shadow-xl border-t-8 border-blue-600 space-y-6">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-black text-slate-800">مناقشة ذكية (Gemini 3 Pro)</h3>
-            <i className={`fas fa-brain ${loading ? 'animate-pulse text-blue-600' : 'text-slate-200'}`}></i>
+        <div className="bg-slate-900 rounded-[3rem] p-8 text-white shadow-2xl flex flex-col justify-center text-right overflow-hidden relative">
+          <div className="relative z-10">
+            <h3 className="text-xl font-black mb-4 flex items-center gap-3 justify-end">
+               <span>رسالة أمان العائلية</span>
+               <MessageCircle className="text-amber-400" size={24} />
+            </h3>
+            <p className="text-slate-300 font-bold text-base leading-loose italic">
+              "يا جماعة، الله يجزيكو الخير، المصاريف هالشهر مرتبة والوالدة وضعها الصحي مستقر والحمد لله. بس لا ننسى نحدث مواعيد المختبر أول بأول عشان نضل متبعين."
+            </p>
           </div>
-          
-          <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
-            <div className="text-right">
-              <div className="text-xs font-black text-slate-700">وضع التفكير العميق</div>
-              <div className="text-[9px] text-slate-400 font-bold">للمسائل الطبية المعقدة</div>
-            </div>
-            <button 
-              onClick={() => setThinkingMode(!thinkingMode)}
-              className={`w-12 h-6 rounded-full transition-all flex items-center px-1 ${thinkingMode ? 'bg-blue-600 justify-end' : 'bg-slate-300 justify-start'}`}
-            >
-              <div className="w-4 h-4 bg-white rounded-full shadow-sm"></div>
-            </button>
-          </div>
-
-          <textarea 
-            value={doctorOpinion}
-            onChange={(e) => setDoctorOpinion(e.target.value)}
-            className="w-full h-40 p-5 bg-slate-50 border-none rounded-[2rem] text-sm font-bold focus:ring-2 focus:ring-blue-600 outline-none"
-            placeholder="مثلاً: الطبيب طلب إيقاف دواء الأسبرين، هل هذا آمن بناءً على حالتها؟"
-          ></textarea>
-          
-          <button onClick={handleGenerateAdvice} disabled={loading} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center gap-3">
-            {loading ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-wand-magic-sparkles"></i>}
-            {thinkingMode ? "تحليل عميق (Gemini Thinking)" : "استشارة أمان سريعة"}
-          </button>
+          <Activity className="absolute -bottom-10 -left-10 text-white/5 w-64 h-64" />
         </div>
+      </div>
+      
+      <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm">
+         <h3 className="text-lg font-black text-slate-800 mb-8">توزيع المساهمات المالية (كشف حساب)</h3>
+         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            {PAYERS.map(payer => {
+              const amount = financialSummary.perPayer[payer] || 0;
+              const percent = (amount / (financialSummary.totalActual || 1)) * 100;
+              return (
+                <div key={payer} className="space-y-3">
+                   <div className="flex justify-between items-center px-1">
+                      <span className="text-xs font-black text-blue-600">{amount.toFixed(1)} JOD</span>
+                      <span className="text-sm font-black text-slate-700">{payer}</span>
+                   </div>
+                   <div className="w-full h-2 bg-slate-50 rounded-full overflow-hidden border border-slate-100">
+                      <div className="h-full bg-blue-500 rounded-full transition-all duration-700 shadow-sm" style={{ width: `${percent}%` }}></div>
+                   </div>
+                </div>
+              );
+            })}
+         </div>
       </div>
     </div>
   );

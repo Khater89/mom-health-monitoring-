@@ -1,41 +1,37 @@
 
-import { GoogleGenAI, Type, Blob, Modality } from "@google/genai";
+import { GoogleGenAI, Type, Blob } from "@google/genai";
 import { SYSTEM_INSTRUCTION } from "../constants";
-import { UserProfile, AnalysisResult, MealPlan, MedicalRecordKind } from "../types";
+import { MealPlan, UserProfile } from "../types";
 
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 /**
- * محرك الفرز والتحليل المعمق: يستخدم Gemini 3 Pro لتحليل الصور والمستندات بدقة عالية
+ * تحليل المستندات الطبية باستخدام Gemini 3 Pro مع Thinking Mode
+ * يستخدم لتحليل التقارير الفردية ومقارنتها بتوصيات الأطباء
  */
-export const autoSortMedicalFile = async (base64Data: string, mimeType: string) => {
+export const analyzeMedicalDocument = async (base64: string, mimeType: string) => {
   const ai = getAI();
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
     contents: {
       parts: [
-        { inlineData: { data: base64Data, mimeType } },
-        { text: `أنت خبير مختبرات طبي رفيع المستوى. حلل هذه الصورة/الملف الطبي بعناية فائقة:
-        1. استخرج كافة النتائج المخبرية بدقة (الاسم، القيمة، الوحدة، المجال الطبيعي).
-        2. قدم شرحاً علمياً مبسطاً لكل نتيجة خارج النطاق الطبيعي.
-        3. صنف الملف ضمن الفئات التالية: visits, labs, meds, hospital, costs.
-        4. استخرج التواريخ، التخصصات، والمبالغ المالية المذكورة.
-        
-        يجب أن تكون الإجابة بصيغة JSON حصراً وتفصيلية جداً في خانة recommendations.` }
+        { inlineData: { data: base64, mimeType } },
+        { text: `أنت خبير طبي متخصص. حلل هذا المستند بدقة. 
+        إذا كان تقريراً مخبرياً: استخرج النتائج والقيم غير الطبيعية وقارنها بالمرجع. 
+        إذا كان دواءً: استخرج الاسم العلمي والتجاري والجرعة والغرض.
+        يجب أن تكون الإجابة بتنسيق JSON حصراً.` }
       ]
     },
     config: {
+      thinkingConfig: { thinkingBudget: 32768 },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          category: { type: Type.STRING },
+          category: { type: Type.STRING, description: "labs, meds, visits, hospital, er" },
           title: { type: Type.STRING },
-          date: { type: Type.STRING },
-          place: { type: Type.STRING },
-          actualCost: { type: Type.NUMBER },
           summary: { type: Type.STRING },
-          recommendations: { type: Type.STRING, description: "Detailed medical analysis of lab results" },
+          actualCost: { type: Type.NUMBER },
           medications: {
             type: Type.ARRAY,
             items: {
@@ -43,12 +39,12 @@ export const autoSortMedicalFile = async (base64Data: string, mimeType: string) 
               properties: {
                 nameAr: { type: Type.STRING },
                 dosage: { type: Type.STRING },
-                purpose: { type: Type.STRING }
+                purpose: { type: Type.STRING },
+                categoryAr: { type: Type.STRING }
               }
             }
           }
-        },
-        required: ["category", "title", "recommendations"]
+        }
       }
     }
   });
@@ -56,124 +52,43 @@ export const autoSortMedicalFile = async (base64Data: string, mimeType: string) 
 };
 
 /**
- * وضع التفكير العميق (Thinking Mode): يستخدم للمسائل الطبية المعقدة وتداخلات الأدوية
+ * تحليل المجلد (ملفات متعددة) وتصنيفها آلياً
  */
-export const getDeepAnalysis = async (query: string, context?: string) => {
+export const analyzeBulkFiles = async (files: { base64: string, mimeType: string }[]) => {
   const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
-    contents: `سؤال معقد حول حالة الوالدة الصحية: ${query} \n السياق الإضافي: ${context || ''}`,
-    config: {
-      thinkingConfig: { thinkingBudget: 32768 }
-    },
-  });
-  return response.text;
-};
+  const parts = files.map(f => ({ inlineData: { data: f.base64, mimeType: f.mimeType } }));
+  parts.push({ text: "قم بفحص هذه الملفات الطبية جميعاً. صنف كل ملف (دواء، مختبر، زيارة، فاتورة) واستخرج البيانات الأساسية لكل منها. أرجع قائمة JSON." } as any);
 
-export const analyzeMedicalText = async (textContent: string) => {
-  const ai = getAI();
   const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: {
-      parts: [
-        { text: `حلل هذه البيانات الجدولية وقم بفرزها وتصنيفها طبياً: \n ${textContent}` }
-      ]
-    },
+    model: 'gemini-3-pro-preview',
+    contents: { parts: parts as any },
     config: {
+      thinkingConfig: { thinkingBudget: 32768 },
       responseMimeType: "application/json",
       responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          summary: { type: Type.STRING },
-          medications: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                nameAr: { type: Type.STRING },
-                nameEn: { type: Type.STRING },
-                dosage: { type: Type.STRING },
-                purpose: { type: Type.STRING }
-              }
-            }
-          },
-          advice: { type: Type.STRING }
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            type: { type: Type.STRING },
+            title: { type: Type.STRING },
+            cost: { type: Type.NUMBER },
+            summary: { type: Type.STRING }
+          }
         }
       }
     }
   });
-  return JSON.parse(response.text || '{}');
+  return JSON.parse(response.text || '[]');
 };
 
-export const analyzeMedicalDocument = async (base64Data: string, mimeType: string) => {
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
-    contents: {
-      parts: [
-        { inlineData: { data: base64Data, mimeType } },
-        { text: "حلل هذه الوثيقة الطبية باستخدام قدراتك البصرية المتقدمة واستخرج المعلومات الأساسية." }
-      ]
-    },
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          summary: { type: Type.STRING },
-          medications: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                nameAr: { type: Type.STRING },
-                dosage: { type: Type.STRING },
-                purpose: { type: Type.STRING }
-              }
-            }
-          },
-          advice: { type: Type.STRING }
-        }
-      }
-    }
-  });
-  return JSON.parse(response.text || '{}');
-};
-
-export const getAdvancedAdvice = async (profile: UserProfile, doctorOpinion: string, attachments: { data: string, mimeType: string }[] = []) => {
-  const ai = getAI();
-  const parts: any[] = [
-    { text: `بناءً على تاريخ الوالدة الطبي والبيان الحالي: "${doctorOpinion}". قدم تحليلاً طبياً مع استخدام البحث في جوجل.` }
-  ];
-
-  attachments.forEach(att => {
-    parts.push({ inlineData: { data: att.data, mimeType: att.mimeType } });
-  });
-
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
-    contents: { parts },
-    config: { 
-      tools: [{ googleSearch: {} }],
-      thinkingConfig: { thinkingBudget: 16000 }
-    },
-  });
-
-  const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => ({
-    title: chunk.web?.title || 'مصدر طبي',
-    uri: chunk.web?.uri
-  })).filter((s: any) => s.uri) || [];
-
-  return { text: response.text, sources };
-};
-
-export const startChat = () => {
+export const startChat = (useThinking = true) => {
   const ai = getAI();
   return ai.chats.create({
     model: 'gemini-3-pro-preview',
-    config: { 
+    config: {
       systemInstruction: SYSTEM_INSTRUCTION,
-      thinkingConfig: { thinkingBudget: 0 } // تعطيل التفكير في الشات المباشر لسرعة الاستجابة
+      thinkingConfig: useThinking ? { thinkingBudget: 32768 } : undefined
     },
   });
 };
@@ -182,7 +97,7 @@ export const generateMealPlan = async (profile: UserProfile): Promise<MealPlan[]
   const ai = getAI();
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: `صمم خطة وجبات للوالدة: ${JSON.stringify(profile)}`,
+    contents: `صمم برنامج وجبات صحي لمدة 7 أيام لـ ${profile.name}. الأهداف: ${profile.goals.join(', ')}. القيود: ${profile.dietaryRestrictions.join(', ')}. JSON format.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -194,50 +109,29 @@ export const generateMealPlan = async (profile: UserProfile): Promise<MealPlan[]
             breakfast: { type: Type.STRING },
             lunch: { type: Type.STRING },
             dinner: { type: Type.STRING },
-            snack: { type: Type.STRING },
+            snack: { type: Type.STRING }
           }
-        },
-      },
-    },
+        }
+      }
+    }
   });
   return JSON.parse(response.text || '[]');
 };
 
-export const synthesizeSpeech = async (text: string) => {
-  const ai = getAI();
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash-preview-tts",
-    contents: [{ parts: [{ text: text }] }],
-    config: {
-      responseModalities: [Modality.AUDIO],
-      speechConfig: {
-        voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
-      },
-    },
-  });
-  return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-};
-
-export function encode(bytes: Uint8Array) {
+export const encode = (bytes: Uint8Array) => {
   let binary = '';
   for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary);
-}
+};
 
-export function createPcmBlob(data: Float32Array): Blob {
-  const int16 = new Int16Array(data.length);
-  for (let i = 0; i < data.length; i++) int16[i] = data[i] * 32768;
-  return { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' };
-}
-
-export function decode(base64: string) {
+export const decode = (base64: string) => {
   const binaryString = atob(base64);
   const bytes = new Uint8Array(binaryString.length);
   for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
   return bytes;
-}
+};
 
-export async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number): Promise<AudioBuffer> {
+export const decodeAudioData = async (data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number) => {
   const dataInt16 = new Int16Array(data.buffer);
   const frameCount = dataInt16.length / numChannels;
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
@@ -246,4 +140,10 @@ export async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampl
     for (let i = 0; i < frameCount; i++) channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
   }
   return buffer;
-}
+};
+
+export const createPcmBlob = (data: Float32Array): Blob => {
+  const int16 = new Int16Array(data.length);
+  for (let i = 0; i < data.length; i++) int16[i] = data[i] * 32768;
+  return { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' };
+};

@@ -1,8 +1,8 @@
 {
-  "name": "أمان - رفيق صحة الوالدة",
-  "description": "منصة ذكية لمتابعة الحالة الصحية للوالدين مع ميزات تحليل التقارير الطبية والرفيق الصوتي.",
+  "name": "FamHealth (أمان)",
+  "description": "نظام إدارة السجلات الطبية العائلية مع تتبع مالي دقيق وتحليل AI.",
   "requestFramePermissions": [
-    "microphone",
-    "camera"
+    "camera",
+    "microphone"
   ]
 }
